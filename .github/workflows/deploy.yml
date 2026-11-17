@@ -1,13 +1,16 @@
-name: Application Deployment Test
+name: Full Stack Application Deployment Test
 
 on:
   push:
     branches: [ main ]
   workflow_dispatch:
 
+env:
+  COMPOSE_PROJECT_NAME: myapp
+
 jobs:
   deploy-and-test:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted  # <--- Теперь используем наш Linux-раннер в WSL
 
     steps:
       - name: Checkout code
@@ -15,7 +18,7 @@ jobs:
 
       - name: Create .env file from secrets
         run: |
-          echo "Creating .env file..."
+          echo "Creating .env file from GitHub Secrets..."
           cat > .env << EOF
           DB_HOST=${{ secrets.DB_HOST }}
           DB_PORT=${{ secrets.DB_PORT }}
@@ -25,20 +28,57 @@ jobs:
           APP_PORT=${{ secrets.APP_PORT }}
           EOF
 
-      - name: Start Docker Compose
+      - name: Deploy with Docker Compose
         run: |
           echo "Starting application stack..."
-          docker compose up -d
+          docker compose up -d 
           echo "Waiting for services to start..."
-          sleep 20
+          sleep 15
 
       - name: Verify containers are running
         run: |
           docker compose ps
           if docker compose ps | grep -q "Up"; then
-            echo "✓ All containers are running successfully!"
+            echo "✓ All containers are running"
           else
             echo "✗ Some containers failed to start"
             docker compose logs
             exit 1
           fi
+
+      - name: Run application tests
+        run: |
+          echo "✓ Running application tests..."
+          
+          # ТЕСТ 1: Проверка работы приложения (эндпоинт /health)
+          if curl -f http://localhost:${{ secrets.APP_PORT }}/health; then
+            echo "✓ Web application is healthy"
+          else
+            echo "✗ Web application health check failed"
+            docker compose logs
+            exit 1
+          fi
+
+          # ТЕСТ 2: Сравнение данных БД и API (эндпоинт /api/items/count)
+          echo "2. Testing data consistency..."
+          
+          DB_COUNT=$(docker compose exec -T db psql -U ${{ secrets.DB_USER }} -d ${{ secrets.DB_NAME }} -t -c "SELECT COUNT(*) FROM items;" | tr -d ' \n\r' || echo "0")
+          WEB_COUNT=$(curl -s http://localhost:${{ secrets.APP_PORT }}/api/items/count | tr -d ' \n\r')
+          
+          echo "Database count: $DB_COUNT"
+          echo "Web API count: $WEB_COUNT"
+          
+          if [ "$DB_COUNT" = "$WEB_COUNT" ]; then
+            echo "✓ Data consistency test passed"
+          else
+            echo "✗ Data consistency test failed"
+            exit 1
+          fi
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-logs-and-env
+          path: .env
+          retention-days: 7
