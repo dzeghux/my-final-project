@@ -30,8 +30,9 @@ jobs:
 
       - name: Deploy with Docker Compose
         run: |
-          echo "Stopping old containers..."
+          echo "Stopping and removing old containers..."
           docker compose down -v || true
+          docker rm -f $(docker ps -aq) || true
           
           echo "Starting application stack..."
           docker compose up -d 
@@ -53,6 +54,7 @@ jobs:
         run: |
           echo "✓ Running application tests..."
           
+          # ТЕСТ 1: Проверка работы приложения (эндпоинт /health)
           if curl -f http://localhost:${{ secrets.APP_PORT }}/health; then
             echo "✓ Web application is healthy"
           else
@@ -61,7 +63,9 @@ jobs:
             exit 1
           fi
 
+          # ТЕСТ 2: Сравнение данных БД и API (эндпоинт /api/items/count)
           echo "2. Testing data consistency..."
+          
           DB_COUNT=$(docker compose exec -T db psql -U ${{ secrets.DB_USER }} -d ${{ secrets.DB_NAME }} -t -c "SELECT COUNT(*) FROM items;" | tr -d ' \n\r' || echo "0")
           WEB_COUNT=$(curl -s http://localhost:${{ secrets.APP_PORT }}/api/items/count | tr -d ' \n\r')
           
