@@ -82,21 +82,22 @@ jobs:
             exit 1
           fi
 
-      # НОВЫЙ ШАГ: Собираем всё в ZIP-архив
       - name: Prepare artifacts
         if: always()
         run: |
-          echo "Collecting logs and env for artifacts..."
+          echo "Collecting logs for artifacts..."
+          # Сохраняем логи в файл
           docker compose logs > deployment_logs.txt || true
-          mkdir -p artifacts
-          cp .env artifacts/ || true
-          cp deployment_logs.txt artifacts/ || true
-          cd artifacts && zip -r ../deployment_artifacts.zip * || true
+          # Убеждаемся, что .env на месте
+          ls -la .env || echo "Файл .env не найден!"
 
       - name: Upload artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: deployment-logs-and-env
-          path: deployment_artifacts.zip # <--- Загружаем готовый ZIP-архив
+          # Загружаем два файла напрямую, без ZIP
+          path: |
+            .env
+            deployment_logs.txt
           retention-days: 7
