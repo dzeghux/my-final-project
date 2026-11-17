@@ -1,0 +1,44 @@
+name: Application Deployment Test
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  deploy-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create .env file from secrets
+        run: |
+          echo "Creating .env file..."
+          cat > .env << EOF
+          DB_HOST=${{ secrets.DB_HOST }}
+          DB_PORT=${{ secrets.DB_PORT }}
+          DB_NAME=${{ secrets.DB_NAME }}
+          DB_USER=${{ secrets.DB_USER }}
+          DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+          APP_PORT=${{ secrets.APP_PORT }}
+          EOF
+
+      - name: Start Docker Compose
+        run: |
+          echo "Starting application stack..."
+          docker compose up -d
+          echo "Waiting for services to start..."
+          sleep 20
+
+      - name: Verify containers are running
+        run: |
+          docker compose ps
+          if docker compose ps | grep -q "Up"; then
+            echo "✓ All containers are running successfully!"
+          else
+            echo "✗ Some containers failed to start"
+            docker compose logs
+            exit 1
+          fi
