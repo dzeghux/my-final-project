@@ -82,23 +82,21 @@ jobs:
             exit 1
           fi
 
-      # НОВЫЙ ШАГ: Восстанавливаем .env перед загрузкой
-      - name: Recreate .env file for artifact
+      # НОВЫЙ ШАГ: Собираем всё в ZIP-архив
+      - name: Prepare artifacts
+        if: always()
         run: |
-          echo "Recreating .env file for artifact upload..."
-          cat > .env << EOF
-          DB_HOST=${{ secrets.DB_HOST }}
-          DB_PORT=${{ secrets.DB_PORT }}
-          DB_NAME=${{ secrets.DB_NAME }}
-          DB_USER=${{ secrets.DB_USER }}
-          DB_PASSWORD=${{ secrets.DB_PASSWORD }}
-          APP_PORT=${{ secrets.APP_PORT }}
-          EOF
+          echo "Collecting logs and env for artifacts..."
+          docker compose logs > deployment_logs.txt || true
+          mkdir -p artifacts
+          cp .env artifacts/ || true
+          cp deployment_logs.txt artifacts/ || true
+          cd artifacts && zip -r ../deployment_artifacts.zip * || true
 
       - name: Upload artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: deployment-logs-and-env
-          path: .env
+          path: deployment_artifacts.zip # <--- Загружаем готовый ZIP-архив
           retention-days: 7
