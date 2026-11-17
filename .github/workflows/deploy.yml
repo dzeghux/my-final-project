@@ -65,17 +65,12 @@ jobs:
           fi
 
           echo "2. Testing data consistency..."
-          
-          # Автоматически находим ID контейнера с базой данных (образ postgres)
           DB_CONTAINER_ID=$(docker ps -q -f "ancestor=postgres:16-alpine")
           if [ -z "$DB_CONTAINER_ID" ]; then
-            # Если не нашли по тегу, ищем любой контейнер со словом postgres в образе
             DB_CONTAINER_ID=$(docker ps -q | xargs -r docker inspect --format='{{.Id}} {{.Config.Image}}' | grep postgres | awk '{print $1}')
           fi
           
           echo "Found DB container: $DB_CONTAINER_ID"
-          
-          # Выполняем запрос к найденной базе
           DB_COUNT=$(docker exec -i $DB_CONTAINER_ID psql -U ${{ secrets.DB_USER }} -d ${{ secrets.DB_NAME }} -t -c "SELECT COUNT(*) FROM items;" | tr -d ' \n\r' || echo "0")
           
           echo "Database count: $DB_COUNT"
@@ -86,6 +81,19 @@ jobs:
             echo "✗ Database is empty or unreachable"
             exit 1
           fi
+
+      # НОВЫЙ ШАГ: Восстанавливаем .env перед загрузкой
+      - name: Recreate .env file for artifact
+        run: |
+          echo "Recreating .env file for artifact upload..."
+          cat > .env << EOF
+          DB_HOST=${{ secrets.DB_HOST }}
+          DB_PORT=${{ secrets.DB_PORT }}
+          DB_NAME=${{ secrets.DB_NAME }}
+          DB_USER=${{ secrets.DB_USER }}
+          DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+          APP_PORT=${{ secrets.APP_PORT }}
+          EOF
 
       - name: Upload artifacts
         if: always()
