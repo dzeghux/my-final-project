@@ -53,28 +53,32 @@ jobs:
       - name: Run application tests
         run: |
           echo "✓ Running application tests..."
-          
-          # Дадим приложению еще чуть-чуть времени (оно может долго коннектиться к БД)
           sleep 10
           
           echo "1. Testing connectivity to the web application..."
-          # Проверяем, что приложение вообще принимает соединения на порту 9090
-          # Если оно вернет даже 404, значит оно работает!
           if curl -s -o /dev/null http://localhost:${{ secrets.APP_PORT }}/; then
             echo "✓ Web application is up and responding"
           else
             echo "✗ Web application is not responding"
-            docker compose logs app
+            docker compose logs
             exit 1
           fi
 
           echo "2. Testing data consistency..."
-          # Твой сервис БД в docker-compose.yml называется 'app-db' (это видно в логе)
-          DB_COUNT=$(docker compose exec -T app-db psql -U ${{ secrets.DB_USER }} -d ${{ secrets.DB_NAME }} -t -c "SELECT COUNT(*) FROM items;" | tr -d ' \n\r' || echo "0")
+          
+          # Автоматически находим ID контейнера с базой данных (образ postgres)
+          DB_CONTAINER_ID=$(docker ps -q -f "ancestor=postgres:16-alpine")
+          if [ -z "$DB_CONTAINER_ID" ]; then
+            # Если не нашли по тегу, ищем любой контейнер со словом postgres в образе
+            DB_CONTAINER_ID=$(docker ps -q | xargs -r docker inspect --format='{{.Id}} {{.Config.Image}}' | grep postgres | awk '{print $1}')
+          fi
+          
+          echo "Found DB container: $DB_CONTAINER_ID"
+          
+          # Выполняем запрос к найденной базе
+          DB_COUNT=$(docker exec -i $DB_CONTAINER_ID psql -U ${{ secrets.DB_USER }} -d ${{ secrets.DB_NAME }} -t -c "SELECT COUNT(*) FROM items;" | tr -d ' \n\r' || echo "0")
           
           echo "Database count: $DB_COUNT"
-          # Так как мы не знаем точного URL API, мы просто выводим его, 
-          # чтобы ты видел, что приложение работает. Для сдачи задания этого может быть достаточно.
           
           if [ "$DB_COUNT" -gt "0" ]; then
             echo "✓ Database has data and is accessible"
